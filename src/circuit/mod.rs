@@ -141,7 +141,10 @@ impl BristolCircuit {
 
 #[cfg(test)]
 mod tests {
-    use crate::{circuit::BristolCircuit, utils::number_to_bool_array};
+    use crate::{
+        circuit::BristolCircuit,
+        utils::{bool_array_to_number, number_to_bool_array},
+    };
 
     #[test]
     fn test_circuit_state() {
@@ -155,14 +158,15 @@ mod tests {
 
     #[test]
     fn test_add_circuit() {
-        let mut circuit = BristolCircuit::from_bristol("bristol/add.txt");
+        let mut circuit = BristolCircuit::from_bristol("circuits/add.txt");
         let a1 = 633;
-        let a2 = 15;
+        let a2 = 300;
         let b1 = number_to_bool_array(a1, 64);
         let b2 = number_to_bool_array(a2, 64);
 
         let o = circuit.evaluate(vec![b1, b2]);
         let output = bool_array_to_number(o.first().unwrap().to_vec());
+
         assert_eq!(output, a1 + a2);
     }
 }

@@ -8,7 +8,7 @@ use bitcoin::{
 use bitcoincore_rpc::bitcoin::key::rand::{self, Rng};
 
 pub struct Actor {
-    keypair: Keypair,
+    pub keypair: Keypair,
     pub address: Address,
 }
 

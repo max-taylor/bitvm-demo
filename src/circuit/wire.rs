@@ -6,20 +6,20 @@ pub type HashValue = [u8; 32];
 pub type PreimageValue = [u8; 32];
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
-pub struct Preimages {
-    pub zero: Option<PreimageValue>,
-    pub one: Option<PreimageValue>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct HashTuple {
     pub zero: HashValue,
     pub one: HashValue,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub struct PreimageTuple {
+    pub zero: Option<PreimageValue>,
+    pub one: Option<PreimageValue>,
+}
+
 #[derive(Clone)]
 pub struct Wire {
-    pub preimages: Option<Preimages>,
+    pub preimages: Option<PreimageTuple>,
     pub hashes: HashTuple,
     pub index: Option<usize>,
     pub selector: Option<bool>,
@@ -36,7 +36,7 @@ impl Wire {
         let hash2 = sha256::Hash::hash(&preimage2).to_byte_array();
 
         Wire {
-            preimages: Some(Preimages {
+            preimages: Some(PreimageTuple {
                 zero: Some(preimage1),
                 one: Some(preimage2),
             }),
@@ -67,5 +67,32 @@ impl Wire {
             },
             None => panic!("preimages are not set"),
         }
+    }
+
+    pub fn add_preimage(&mut self, preimage: PreimageValue) -> Option<Wire> {
+        let hash = sha256::Hash::hash(&preimage).to_byte_array();
+        if hash == self.hashes.zero {
+            self.preimages = Some(PreimageTuple {
+                zero: Some(preimage),
+                one: match self.preimages {
+                    Some(cur) => cur.one,
+                    None => None,
+                },
+            });
+        } else if hash == self.hashes.one {
+            self.preimages = Some(PreimageTuple {
+                zero: match self.preimages {
+                    Some(cur) => cur.zero,
+                    None => None,
+                },
+                one: Some(preimage),
+            });
+        } else {
+            panic!("preimage does not match either hash");
+        }
+        if self.preimages.unwrap().zero.is_some() && self.preimages.unwrap().one.is_some() {
+            return Some(self.clone());
+        }
+        None
     }
 }

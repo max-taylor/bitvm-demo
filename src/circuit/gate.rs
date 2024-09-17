@@ -2,13 +2,16 @@ use std::sync::{Arc, Mutex};
 
 use bitcoin::{
     opcodes::all::{
-        OP_EQUALVERIFY, OP_FROMALTSTACK, OP_NOT, OP_NUMEQUAL, OP_SHA256, OP_TOALTSTACK,
+        OP_BOOLAND, OP_EQUALVERIFY, OP_FROMALTSTACK, OP_NOT, OP_NUMEQUAL, OP_SHA256, OP_TOALTSTACK,
     },
     script::Builder,
     ScriptBuf,
 };
 
-use crate::{traits::gate::GateTrait, transactions::add_bit_commitment_script};
+use crate::{
+    traits::gate::{GateTrait, Wires},
+    transactions::add_bit_commitment_script,
+};
 
 use super::wire::{HashValue, Wire};
 
@@ -169,13 +172,73 @@ impl GateTrait for XorGate {
     }
 }
 
+pub struct AndGate {
+    pub input_wires: Vec<Arc<Mutex<Wire>>>,
+    pub output_wires: Vec<Arc<Mutex<Wire>>>,
+}
+
+impl AndGate {
+    pub fn new(input_wires: Vec<Arc<Mutex<Wire>>>, output_wires: Vec<Arc<Mutex<Wire>>>) -> Self {
+        AndGate {
+            input_wires,
+            output_wires,
+        }
+    }
+}
+
+impl GateTrait for AndGate {
+    fn get_input_size(&self) -> usize {
+        2
+    }
+
+    fn get_output_size(&self) -> usize {
+        1
+    }
+
+    fn get_input_wires(&mut self) -> &mut Wires {
+        &mut self.input_wires
+    }
+
+    fn get_output_wires(&mut self) -> &mut Wires {
+        &mut self.output_wires
+    }
+
+    fn create_response_script(&self, lock_hash: HashValue) -> ScriptBuf {
+        let builder = Builder::new()
+            .push_opcode(OP_SHA256)
+            .push_slice(lock_hash)
+            .push_opcode(OP_EQUALVERIFY);
+        let builder = add_bit_commitment_script(
+            self.output_wires[0].lock().unwrap().get_hash_pair(),
+            builder,
+        )
+        .push_opcode(OP_TOALTSTACK);
+        let builder =
+            add_bit_commitment_script(self.input_wires[1].lock().unwrap().get_hash_pair(), builder)
+                .push_opcode(OP_TOALTSTACK);
+        let builder =
+            add_bit_commitment_script(self.input_wires[0].lock().unwrap().get_hash_pair(), builder);
+        builder
+            .push_opcode(OP_FROMALTSTACK)
+            .push_opcode(OP_BOOLAND)
+            .push_opcode(OP_FROMALTSTACK)
+            .push_opcode(OP_EQUALVERIFY)
+            .into_script()
+    }
+
+    fn run_gate_on_inputs(&self, inputs: Vec<bool>) -> Vec<bool> {
+        assert!(inputs.len() == 2);
+        vec![inputs[0] && inputs[1]]
+    }
+}
+
 pub fn create_gate(
     gate_type: GateType,
     input_wires: Vec<SafeWire>,
     output_wires: Vec<SafeWire>,
 ) -> Box<dyn GateTrait> {
     match gate_type {
-        GateType::AND => panic!("AND gate not implemented"),
+        GateType::AND => Box::new(AndGate::new(input_wires, output_wires)),
         GateType::OR => panic!("OR gate not implemented"),
         GateType::XOR => Box::new(XorGate::new(input_wires, output_wires)),
         GateType::NOT => Box::new(NotGate::new(input_wires, output_wires)),
