@@ -1,23 +1,28 @@
 use bitcoin::hashes::{sha256, Hash};
 use bitcoincore_rpc::bitcoin::key::rand::{self, Rng};
+use serde::{Deserialize, Serialize};
 
 pub type HashValue = [u8; 32];
 pub type PreimageValue = [u8; 32];
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct Preimages {
     pub zero: Option<PreimageValue>,
     pub one: Option<PreimageValue>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct HashTuple {
     pub zero: HashValue,
     pub one: HashValue,
 }
 
+#[derive(Clone)]
 pub struct Wire {
     pub preimages: Option<Preimages>,
     pub hashes: HashTuple,
     pub index: Option<usize>,
+    pub selector: Option<bool>,
 }
 
 impl Wire {
@@ -40,6 +45,27 @@ impl Wire {
                 one: hash2,
             },
             index: Some(index),
+            selector: None,
+        }
+    }
+
+    pub fn get_hash_pair(&self) -> HashTuple {
+        self.hashes
+    }
+
+    pub fn get_preimage_of_selector(&self) -> [u8; 32] {
+        match self.preimages {
+            Some(preimage_tuple) => match self.selector {
+                Some(b) => {
+                    if !b {
+                        preimage_tuple.zero.unwrap()
+                    } else {
+                        preimage_tuple.one.unwrap()
+                    }
+                }
+                None => panic!("selector is not set"),
+            },
+            None => panic!("preimages are not set"),
         }
     }
 }

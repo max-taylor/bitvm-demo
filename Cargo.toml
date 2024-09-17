@@ -6,3 +6,5 @@ edition = "2021"
 [dependencies]
 bitcoin = "0.31"
 bitcoincore-rpc = "0.19"
+serde = "1.0.193"
+serde_json = "1.0.108"

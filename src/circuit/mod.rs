@@ -5,25 +5,28 @@ use std::{
     collections::BTreeMap,
     fs::File,
     io::{BufRead, BufReader},
+    iter::zip,
     sync::{Arc, Mutex},
 };
 
-use gate::Gate;
+use gate::{create_gate, Gate, GateType, SafeWire};
 use wire::Wire;
 
-struct BristolCircuit {
-    pub gates: Vec<Gate>,
-    pub wires: Vec<Wire>,
+use crate::traits::gate::GateTrait;
+
+pub struct BristolCircuit {
+    pub gates: Vec<Box<dyn GateTrait>>,
+    pub wires: Vec<SafeWire>,
     pub input_wire_sizes: Vec<usize>,
     pub output_wire_sizes: Vec<usize>,
 }
 
 impl BristolCircuit {
-    pub fn new(path: &str) -> Self {
+    pub fn from_bristol(path: &str) -> Self {
         let mut num_gates: usize = 0;
         let mut num_wires: usize = 0;
         let mut wires: Vec<Wire> = Vec::new();
-        let mut gates: Vec<Gate> = Vec::new();
+        let mut gates: Vec<Box<dyn GateTrait>> = Vec::new();
         let mut input_wire_sizes: Vec<usize> = Vec::new();
         let mut output_wire_sizes: Vec<usize> = Vec::new();
         let mut wire_indexes = BTreeMap::new();
@@ -80,19 +83,86 @@ impl BristolCircuit {
                         })
                         .collect();
 
-                    let gate_type = values.next().unwrap();
+                    let gate_type: GateType = values.next().unwrap().into();
 
-                    let gate = Gate::new(gate_type, input_wires, output_wires);
+                    let gate = create_gate(gate_type, input_wires, output_wires);
                     gates.push(gate);
                 }
             }
         }
 
         BristolCircuit {
-            gates: Vec::new(),
-            wires,
+            gates,
             input_wire_sizes,
             output_wire_sizes,
+            wires: wire_indexes
+                .values()
+                .cloned()
+                .collect::<Vec<Arc<Mutex<Wire>>>>(),
         }
+    }
+
+    pub fn evaluate(&mut self, inputs: Vec<Vec<bool>>) -> Vec<Vec<bool>> {
+        assert_eq!(
+            inputs.len(),
+            self.input_wire_sizes.len(),
+            "wrong number of inputs"
+        );
+        let mut combined_inputs = Vec::new();
+        for (a, b) in zip(inputs, self.input_wire_sizes.clone()) {
+            assert_eq!(
+                a.len(),
+                b,
+                "input lengths do not match for one of the inputs"
+            );
+            combined_inputs.extend(a);
+        }
+        for (i, value) in combined_inputs.iter().enumerate() {
+            self.wires[i].lock().unwrap().selector = Some(*value);
+        }
+        for gate in self.gates.as_mut_slice() {
+            gate.evaluate();
+        }
+        let mut output = Vec::new();
+        let total_output_size = self.output_wire_sizes.iter().sum::<usize>();
+        let mut output_index = self.wires.len() - total_output_size;
+        for os in self.output_wire_sizes.clone() {
+            let mut output_vec = Vec::new();
+            for i in output_index..(output_index + os) {
+                let value = self.wires[i].lock().unwrap().selector.unwrap();
+                output_vec.push(value);
+            }
+            output_index += os;
+            output.push(output_vec);
+        }
+        output
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{circuit::BristolCircuit, utils::number_to_bool_array};
+
+    #[test]
+    fn test_circuit_state() {
+        let circuit = BristolCircuit::from_bristol("circuits/add.txt");
+
+        assert_eq!(circuit.gates.len(), 376);
+        assert_eq!(circuit.wires.len(), 504);
+        assert_eq!(circuit.input_wire_sizes, vec![64, 64]);
+        assert_eq!(circuit.output_wire_sizes, vec![64]);
+    }
+
+    #[test]
+    fn test_add_circuit() {
+        let mut circuit = BristolCircuit::from_bristol("bristol/add.txt");
+        let a1 = 633;
+        let a2 = 15;
+        let b1 = number_to_bool_array(a1, 64);
+        let b2 = number_to_bool_array(a2, 64);
+
+        let o = circuit.evaluate(vec![b1, b2]);
+        let output = bool_array_to_number(o.first().unwrap().to_vec());
+        assert_eq!(output, a1 + a2);
     }
 }
