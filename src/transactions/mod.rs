@@ -1,3 +1,6 @@
+pub mod challenge;
+pub mod witness;
+
 use std::str::FromStr;
 
 use bitcoin::{
@@ -12,7 +15,13 @@ use bitcoin::{
     Address, ScriptBuf, XOnlyPublicKey,
 };
 
-use crate::circuit::{wire::HashTuple, BristolCircuit};
+use crate::{
+    circuit::{
+        wire::{HashTuple, HashValue},
+        BristolCircuit,
+    },
+    traits::gate::GateTrait,
+};
 
 pub fn add_bit_commitment_script(wire_bit_hashes: HashTuple, builder: Builder) -> Builder {
     builder
@@ -114,4 +123,70 @@ pub fn taproot_address_from_script_leaves(
         bitcoin::Network::Regtest,
     );
     (address, tree_info)
+}
+
+pub fn generate_challenge_address_and_info(
+    secp: &Secp256k1<All>,
+    circuit: &BristolCircuit,
+    verifier_pk: XOnlyPublicKey,
+    challenge_hashes: &Vec<HashValue>,
+) -> (Address, TaprootSpendInfo) {
+    assert_eq!(
+        challenge_hashes.len(),
+        circuit.gates.len(),
+        "wrong number of challenge hashes"
+    );
+    let scripts = challenge_hashes
+        .iter()
+        .map(|x| generate_challenge_script(verifier_pk, x))
+        .collect::<Vec<ScriptBuf>>();
+    taproot_address_from_script_leaves(secp, scripts)
+}
+
+pub fn generate_challenge_script(
+    verifier_pk: XOnlyPublicKey,
+    challenge_hash: &HashValue,
+) -> ScriptBuf {
+    Builder::new()
+        .push_opcode(OP_SHA256)
+        .push_slice(challenge_hash)
+        .push_opcode(OP_EQUALVERIFY)
+        .push_x_only_key(&verifier_pk)
+        .push_opcode(OP_CHECKSIG)
+        .into_script()
+}
+
+pub fn generate_response_address_and_info(
+    secp: &Secp256k1<All>,
+    circuit: &BristolCircuit,
+    prover_pk: XOnlyPublicKey,
+    challenge_hashes: &Vec<HashValue>,
+) -> (Address, TaprootSpendInfo) {
+    assert_eq!(
+        challenge_hashes.len(),
+        circuit.gates.len(),
+        "wrong number of challenge hashes"
+    );
+    let scripts = circuit
+        .gates
+        .iter()
+        .zip(challenge_hashes.iter())
+        .map(|(gate, hash)| generate_gate_response_script(gate, hash, prover_pk))
+        .collect::<Vec<ScriptBuf>>();
+    taproot_address_from_script_leaves(secp, scripts)
+}
+
+pub fn generate_gate_response_script(
+    gate: &Box<dyn GateTrait>,
+    challenge_hash: &HashValue,
+    prover_pk: XOnlyPublicKey,
+) -> ScriptBuf {
+    Builder::from(
+        gate.create_response_script(*challenge_hash)
+            .as_bytes()
+            .to_vec(),
+    )
+    .push_x_only_key(&prover_pk)
+    .push_opcode(OP_CHECKSIG)
+    .into_script()
 }

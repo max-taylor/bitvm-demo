@@ -143,7 +143,7 @@ impl BristolCircuit {
 mod tests {
     use crate::{
         circuit::BristolCircuit,
-        utils::{bool_array_to_number, number_to_bool_array},
+        conversions::{bool_array_to_number, number_to_bool_array},
     };
 
     #[test]
