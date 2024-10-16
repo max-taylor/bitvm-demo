@@ -74,7 +74,7 @@ fn main() {
         let (response_address, _) =
             generate_response_address_and_info(&secp, &circuit, prover.pk, &challenge_hashes);
 
-        let mut challenge_tx = build_challenge_tx(
+        let challenge_tx = build_challenge_tx(
             &initial_fund_or_prev_response_tx,
             &challenge_address,
             &equivocation_address,
@@ -84,7 +84,7 @@ fn main() {
             i,
         );
 
-        let mut response_tx = build_response_tx(
+        let response_tx = build_response_tx(
             &challenge_tx,
             &response_address,
             &response_second_address,
@@ -111,9 +111,9 @@ fn main() {
             );
         }
 
-        let sig = prover.sign_tx_containing_musig(&mut response_tx, challenge_tx.output.clone());
+        let sig = prover.sign_tx_containing_musig(&response_tx, challenge_tx.output.clone());
         // Verifier saves signature so they can respond to a challenge later
-        verifier.add_signature(sig, &mut response_tx, challenge_tx.output.clone());
+        verifier.add_signature(sig, &response_tx, challenge_tx.output.clone());
 
         initial_fund_or_prev_response_tx = response_tx.clone();
 
@@ -155,6 +155,7 @@ fn main() {
                 )
                 .unwrap();
 
+            // ISSUE: Some transactions are failing with "mandatory-script-verify-flag-failed (Invalid Schnorr signature)"
             let sig = prover.sign_with_tweak(sig_hash, None);
             let witness = sighash_cache.witness_mut(0).unwrap();
             witness.push(sig.as_ref());
@@ -166,6 +167,8 @@ fn main() {
 
         dbg!(&kickoff_txid);
         println!("hey");
+
+        // TODO: Create witness data for response transaction
 
         // rpc.send_raw_transaction(&response_tx, None, None).unwrap();
         // if i != 0 {
