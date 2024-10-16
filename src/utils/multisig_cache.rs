@@ -52,13 +52,13 @@ impl MultiSigCache {
         &mut self,
         secp: &Secp256k1<All>,
         signature: Signature,
-        tx: &mut Transaction,
+        tx: &Transaction,
         last_output: Vec<TxOut>,
     ) {
         let prover_pk = self.prover_pk.unwrap();
         let verifier_pk = self.verifier_pk.unwrap();
 
-        let sig_hash = get_sighash_for_musig_script(&tx, &last_output, prover_pk, verifier_pk);
+        let sig_hash = get_sighash_for_musig_script(tx, &last_output, prover_pk, verifier_pk);
 
         let pubkey = match self.actor_type {
             ActorType::Prover => verifier_pk,

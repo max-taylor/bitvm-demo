@@ -190,3 +190,30 @@ pub fn generate_gate_response_script(
     .push_opcode(OP_CHECKSIG)
     .into_script()
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        actor::{Actor, ActorType},
+        circuit::wire::PreimageValue,
+    };
+
+    use super::*;
+    use bitcoin::{
+        hashes::{sha256, Hash},
+        key::rand::{self, Rng},
+    };
+
+    #[test]
+    fn test_generate_challenge_hash_script() {
+        let actor = Actor::new(ActorType::Prover);
+        let secp = Secp256k1::new();
+        let mut rng = rand::thread_rng();
+        let preimage: PreimageValue = rng.gen();
+        let hash = sha256::Hash::hash(&preimage).to_byte_array();
+
+        let challenge_script = generate_challenge_script(actor.pk, &hash);
+
+        actor.sign_tx_containing_musig
+    }
+}

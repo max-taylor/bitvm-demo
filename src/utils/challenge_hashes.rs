@@ -5,14 +5,14 @@ use bitcoin::{
 
 use crate::circuit::wire::{HashValue, PreimageValue};
 
-pub struct ChallengeHashes {
+pub struct ChallengeHashesManager {
     pub challenge_hashes: Vec<Vec<HashValue>>,
     pub challenge_preimages: Vec<Vec<PreimageValue>>,
 }
 
-impl ChallengeHashes {
-    pub fn new() -> ChallengeHashes {
-        ChallengeHashes {
+impl ChallengeHashesManager {
+    pub fn new() -> ChallengeHashesManager {
+        ChallengeHashesManager {
             challenge_hashes: vec![],
             challenge_preimages: vec![],
         }

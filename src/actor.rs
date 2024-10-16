@@ -62,7 +62,7 @@ impl Actor {
     pub fn add_signature(
         &mut self,
         signature: Signature,
-        tx: &mut Transaction,
+        tx: &Transaction,
         last_output: Vec<TxOut>,
     ) {
         self.multisg_cache
@@ -95,18 +95,22 @@ impl Actor {
         )
     }
 
-    pub fn sign_tx_containing_musig(
-        &mut self,
-        tx: &mut Transaction,
-        last_output: Vec<TxOut>,
-    ) -> Signature {
-        let prover_pk = self.multisg_cache.get_prover_pk();
-        let verifier_pk = self.multisg_cache.get_verifier_pk();
-        let sighash = get_sighash_for_musig_script(&tx, &last_output, prover_pk, verifier_pk);
+    pub fn sign_tx(&self, sighash: &TapSighash) -> Signature {
         self.secp.sign_schnorr_with_rng(
             &Message::from_digest_slice(sighash.as_byte_array()).expect("should be hash"),
             &self.keypair,
             &mut rand::thread_rng(),
         )
+    }
+
+    pub fn sign_tx_containing_musig(
+        &mut self,
+        tx: &Transaction,
+        last_output: Vec<TxOut>,
+    ) -> Signature {
+        let prover_pk = self.multisg_cache.get_prover_pk();
+        let verifier_pk = self.multisg_cache.get_verifier_pk();
+        let sighash = get_sighash_for_musig_script(tx, &last_output, prover_pk, verifier_pk);
+        self.sign_tx(&sighash)
     }
 }
