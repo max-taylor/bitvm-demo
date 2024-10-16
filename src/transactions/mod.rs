@@ -196,6 +196,8 @@ mod tests {
     use crate::{
         actor::{Actor, ActorType},
         circuit::wire::PreimageValue,
+        constants::WALLET_NAME,
+        utils::bitcoin_rpc::setup_client_and_fund_prover,
     };
 
     use super::*;
@@ -207,6 +209,13 @@ mod tests {
     #[test]
     fn test_generate_challenge_hash_script() {
         let actor = Actor::new(ActorType::Prover);
+
+        let (rpc, _) = setup_client_and_fund_prover(
+            WALLET_NAME,
+            &actor.get_bitcoincore_rpc_address(),
+            100_000,
+        );
+
         let secp = Secp256k1::new();
         let mut rng = rand::thread_rng();
         let preimage: PreimageValue = rng.gen();
@@ -214,6 +223,6 @@ mod tests {
 
         let challenge_script = generate_challenge_script(actor.pk, &hash);
 
-        actor.sign_tx_containing_musig
+        // actor.sign_tx_containing_musig
     }
 }

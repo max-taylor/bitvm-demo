@@ -1,69 +1,25 @@
 use actor::{Actor, ActorType};
 use bitcoin::{key::Secp256k1, sighash::SighashCache, Amount, Transaction, TxOut};
-use bitcoincore_rpc::{json::GetTransactionResult, Auth, Client, RpcApi};
+use bitcoincore_rpc::RpcApi;
 use circuit::BristolCircuit;
+use constants::WALLET_NAME;
 use transactions::{
     challenge::{build_challenge_tx, build_response_tx},
     generate_2_of_2_script, generate_challenge_address_and_info,
     generate_equivocation_address_and_info, generate_response_address_and_info,
     generate_timelock_script, taproot_address_from_script_leaves,
 };
-use utils::{challenge_hashes::ChallengeHashesManager, conversions::number_to_bool_array};
+use utils::{
+    bitcoin_rpc::setup_client_and_fund_prover, challenge_hashes::ChallengeHashesManager,
+    conversions::number_to_bool_array,
+};
 
 mod actor;
 mod circuit;
+mod constants;
 mod traits;
 mod transactions;
 mod utils;
-
-const WALLET_NAME: &str = "test_wallet";
-
-fn setup_client_and_fund_prover(prover: &Actor) -> (Client, GetTransactionResult) {
-    let rpc = Client::new(
-        "http://localhost:18443",
-        Auth::UserPass("admin".to_string(), "admin".to_string()),
-    )
-    .unwrap();
-
-    // rpc.create_wallet(WALLET_NAME, None, None, None, None)
-    //     .unwrap();
-    //
-    let _ = rpc.load_wallet(WALLET_NAME);
-
-    let wallet_address = rpc.get_new_address(Some(WALLET_NAME), None).unwrap();
-
-    // TODO: Fails on first load when the wallet doesn't exist
-    // let wallet_address = rpc
-    //     .get_new_address(Some(WALLET_NAME), None)
-    //     .unwrap_or_else(|e| {
-    //         dbg!(e);
-    //         rpc.create_wallet(WALLET_NAME, None, None, None, None)
-    //             .unwrap();
-    //         rpc.get_new_address(Some(WALLET_NAME), None).unwrap()
-    //     });
-
-    rpc.generate_to_address(101, &wallet_address.assume_checked())
-        .unwrap();
-
-    let initial_fund_txid = rpc
-        .send_to_address(
-            &prover.get_bitcoincore_rpc_address(),
-            Amount::from_sat(100_000),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
-        .unwrap_or_else(|e| panic!("Failed to send to address: {}", e));
-
-    let initial_fund_tx = rpc
-        .get_transaction(&initial_fund_txid, None)
-        .unwrap_or_else(|e| panic!("Failed to get transaction: {}", e));
-
-    (rpc, initial_fund_tx)
-}
 
 fn main() {
     let mut circuit = BristolCircuit::from_bristol("circuits/add.txt");
@@ -76,7 +32,8 @@ fn main() {
 
     let mut challenge_hashes_manager = ChallengeHashesManager::new();
 
-    let (rpc, initial_fund_tx) = setup_client_and_fund_prover(&prover);
+    let (rpc, initial_fund_tx) =
+        setup_client_and_fund_prover(WALLET_NAME, &prover.get_bitcoincore_rpc_address(), 100_000);
 
     let secp = Secp256k1::new();
     // WTF is this actually
