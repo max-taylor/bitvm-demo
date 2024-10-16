@@ -78,7 +78,7 @@ fn main() {
             generate_response_address_and_info(&secp, &circuit, prover.pk, &challenge_hashes);
 
         let challenge_tx = build_challenge_tx(
-            &initial_fund_or_prev_response_tx,
+            &initial_fund_or_prev_response_tx.txid(),
             &challenge_address,
             &equivocation_address,
             amt,
