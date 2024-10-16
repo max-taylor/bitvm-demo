@@ -95,9 +95,9 @@ impl Actor {
         )
     }
 
-    pub fn sign_tx(&self, sighash: &TapSighash) -> Signature {
+    pub fn sign_tx(&self, sighash_bytes: &[u8; 32]) -> Signature {
         self.secp.sign_schnorr_with_rng(
-            &Message::from_digest_slice(sighash.as_byte_array()).expect("should be hash"),
+            &Message::from_digest_slice(sighash_bytes).expect("should be hash"),
             &self.keypair,
             &mut rand::thread_rng(),
         )
@@ -111,6 +111,6 @@ impl Actor {
         let prover_pk = self.multisg_cache.get_prover_pk();
         let verifier_pk = self.multisg_cache.get_verifier_pk();
         let sighash = get_sighash_for_musig_script(tx, &last_output, prover_pk, verifier_pk);
-        self.sign_tx(&sighash)
+        self.sign_tx(&sighash.to_byte_array())
     }
 }

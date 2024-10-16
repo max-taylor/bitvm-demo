@@ -32,8 +32,11 @@ fn main() {
 
     let mut challenge_hashes_manager = ChallengeHashesManager::new();
 
-    let (rpc, initial_fund_tx) =
-        setup_client_and_fund_prover(WALLET_NAME, &prover.get_bitcoincore_rpc_address(), 100_000);
+    let (rpc, initial_fund_tx) = setup_client_and_fund_prover(
+        WALLET_NAME,
+        &prover.get_bitcoincore_rpc_address(),
+        Amount::from_sat(100_000),
+    );
 
     let secp = Secp256k1::new();
     // WTF is this actually

@@ -4,7 +4,7 @@ use bitcoincore_rpc::{json::GetTransactionResult, Auth, Client, RpcApi};
 pub fn setup_client_and_fund_prover(
     wallet_name: &str,
     to_address: &Address,
-    amount: u64,
+    amount: Amount,
 ) -> (Client, GetTransactionResult) {
     let rpc = Client::new(
         "http://localhost:18443",
@@ -33,16 +33,7 @@ pub fn setup_client_and_fund_prover(
         .unwrap();
 
     let initial_fund_txid = rpc
-        .send_to_address(
-            to_address,
-            Amount::from_sat(amount),
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+        .send_to_address(to_address, amount, None, None, None, None, None, None)
         .unwrap_or_else(|e| panic!("Failed to send to address: {}", e));
 
     let initial_fund_tx = rpc
