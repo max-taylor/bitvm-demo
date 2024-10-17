@@ -126,7 +126,10 @@ mod tests {
     };
 
     use super::*;
-    use bitcoin::{key::Secp256k1, sighash::SighashCache, Amount, TxOut};
+    use bitcoin::{
+        key::Secp256k1, secp256k1::All, sighash::SighashCache, taproot::TaprootSpendInfo, Amount,
+        TxOut,
+    };
     use bitcoincore_rpc::{json::GetTransactionResult, Client, RpcApi};
 
     const INITIAL_FUND_AMOUNT: Amount = Amount::from_sat(100_000);
@@ -135,12 +138,15 @@ mod tests {
     const DUST_LIMIT: u64 = 546;
 
     fn test_setup() -> (
+        Secp256k1<All>,
+        BristolCircuit,
         Client,
-        GetTransactionResult,
         Actor,
         Actor,
         ChallengeHashesManager,
-        Vec<TxOut>,
+        Transaction,
+        TaprootSpendInfo,
+        TaprootSpendInfo,
     ) {
         let mut prover = Actor::new(ActorType::Prover);
         let mut verifier = Actor::new(ActorType::Verifier);
@@ -154,34 +160,20 @@ mod tests {
             INITIAL_FUND_AMOUNT,
         );
 
-        let challenge_hash_manager = ChallengeHashesManager::new();
+        let mut challenge_hash_manager = ChallengeHashesManager::new();
 
         let fund_tx_prevouts = vec![TxOut {
             script_pubkey: prover.address.script_pubkey(),
             value: INITIAL_FUND_AMOUNT,
         }];
 
-        (
-            rpc,
-            fund_tx,
-            prover,
-            verifier,
-            challenge_hash_manager,
-            fund_tx_prevouts,
-        )
-    }
-
-    #[test]
-    fn test_generate_challenge_hash_script() {
-        let (rpc, fund_tx, prover, verifier, mut challenge_hash_manager, fund_tx_prevouts) =
-            test_setup();
-
         let secp = Secp256k1::new();
         let circuit = BristolCircuit::from_bristol("circuits/add.txt");
+
         let (equivocation_address, equivocation_taproot_info) =
             generate_equivocation_address_and_info(&secp, &circuit, prover.pk, verifier.pk);
 
-        let (challenge_hashes, challenge_preimages) =
+        let (challenge_hashes, _) =
             challenge_hash_manager.generate_challenge_hashes(circuit.gates.len());
 
         let (challenge_address, challenge_taproot_info) =
@@ -215,8 +207,43 @@ mod tests {
 
         dbg!(txid);
 
-        let (response_address, _) =
-            generate_response_address_and_info(&secp, &circuit, prover.pk, &challenge_hashes);
+        (
+            secp,
+            circuit,
+            rpc,
+            prover,
+            verifier,
+            challenge_hash_manager,
+            challenge_tx,
+            challenge_taproot_info,
+            equivocation_taproot_info,
+        )
+    }
+
+    #[test]
+    fn test_generate_challenge_hash_script() {
+        let (
+            secp,
+            circuit,
+            rpc,
+            prover,
+            verifier,
+            challenge_hash_manager,
+            challenge_tx,
+            challenge_taproot_info,
+            equivocation_taproot_info,
+        ) = test_setup();
+
+        let challenge_gate_num = 0;
+
+        let challenge_hashes = challenge_hash_manager.get_challenge_hashes(0);
+
+        let (response_address, _) = generate_response_address_and_info(
+            &secp,
+            &circuit,
+            prover.pk,
+            &challenge_hash_manager.get_challenge_hashes(0),
+        );
 
         let (response_second_address, _) = taproot_address_from_script_leaves(
             &secp,
@@ -236,8 +263,6 @@ mod tests {
             0,
         );
 
-        let challenge_gate_num = 0;
-
         let prover_musig =
             prover.sign_tx_containing_musig(&response_tx, challenge_tx.output.clone());
         let verifier_musig =
@@ -249,7 +274,7 @@ mod tests {
             &verifier,
             prover.pk,
             &challenge_hashes[challenge_gate_num as usize],
-            &challenge_preimages[challenge_gate_num as usize],
+            &challenge_hash_manager.get_challenge_preimage(0, 0),
             &challenge_taproot_info,
             &equivocation_taproot_info,
             &prover_musig,

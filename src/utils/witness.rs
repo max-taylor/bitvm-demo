@@ -11,6 +11,9 @@ use crate::{
     transactions::generate_challenge_script,
 };
 
+/**
+* This function is called by the verifier to fill the response transaction with the witness data
+**/
 pub fn fill_response_tx_with_witness_data(
     response_tx: &mut Transaction,
     challenge_tx: &Transaction,
