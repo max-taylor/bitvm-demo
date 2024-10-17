@@ -144,8 +144,11 @@ mod tests {
         ChallengeHashesManager,
         Vec<TxOut>,
     ) {
-        let prover = Actor::new(ActorType::Prover);
-        let verifier = Actor::new(ActorType::Verifier);
+        let mut prover = Actor::new(ActorType::Prover);
+        let mut verifier = Actor::new(ActorType::Verifier);
+
+        prover.multisg_cache.set_other_actor_pk(verifier.pk);
+        verifier.multisg_cache.set_other_actor_pk(prover.pk);
 
         let (rpc, fund_tx) = setup_client_and_fund_prover(
             WALLET_NAME,
@@ -184,7 +187,7 @@ mod tests {
             challenge_hash_manager.generate_challenge_hashes(circuit.gates.len());
 
         let (challenge_address, challenge_taproot_info) =
-            generate_challenge_address_and_info(&secp, &circuit, prover.pk, &challenge_hashes);
+            generate_challenge_address_and_info(&secp, &circuit, verifier.pk, &challenge_hashes);
 
         let mut challenge_tx = build_challenge_tx(
             &fund_tx.transaction().unwrap().txid(),
@@ -238,7 +241,7 @@ mod tests {
         let challenge_gate_num = 0;
 
         let prover_musig =
-            prover.sign_tx_containing_musig(&response_tx, response_tx.output.clone());
+            prover.sign_tx_containing_musig(&response_tx, challenge_tx.output.clone());
         let verifier_musig =
             verifier.sign_tx_containing_musig(&response_tx, challenge_tx.output.clone());
 
@@ -259,6 +262,7 @@ mod tests {
         let verifier_challenge_sig = verifier.sign_tx(&sig_hash.to_byte_array());
         let challenge_preimage = &challenge_preimages[challenge_gate_num as usize];
 
+        // FIX: This is failing with "cannot create control block"
         let challenge_control_block = challenge_taproot_info
             .control_block(&(challenge_script.clone(), LeafVersion::TapScript))
             .expect("Cannot create control block");
