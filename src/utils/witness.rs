@@ -11,6 +11,8 @@ use crate::{
     transactions::generate_challenge_script,
 };
 
+use super::challenge_hashes::ChallengeHashesManager;
+
 /**
 * This function is called by the verifier to fill the response transaction with the witness data
 **/
@@ -19,14 +21,18 @@ pub fn fill_response_tx_with_witness_data(
     challenge_tx: &Transaction,
     verifier: &Actor,
     prover_pk: XOnlyPublicKey,
-    challenge_hash: &HashValue,
-    challenge_preimage: &PreimageValue,
+    challenge_hash_manager: &ChallengeHashesManager,
+    challenge_response_index: usize,
+    gate_to_challenge: usize,
     challenge_taproot_info: &TaprootSpendInfo,
     equivocation_taproot_info: &TaprootSpendInfo,
     prover_musig: &Signature,
     verifier_musig: &Signature,
 ) {
-    let challenge_script = generate_challenge_script(verifier.pk, challenge_hash);
+    let challenge_hashes = challenge_hash_manager.get_challenge_hashes(challenge_response_index);
+
+    let challenge_script =
+        generate_challenge_script(verifier.pk, &challenge_hashes[gate_to_challenge]);
 
     let mut sighash_cache = SighashCache::new(response_tx);
 
@@ -54,7 +60,9 @@ pub fn fill_response_tx_with_witness_data(
 
     let witness0 = sighash_cache.witness_mut(0).unwrap();
     witness0.push(verifier_challenge_sig.as_ref());
-    witness0.push(challenge_preimage);
+    witness0.push(
+        challenge_hash_manager.get_challenge_preimage(challenge_response_index, gate_to_challenge),
+    );
     witness0.push(challenge_script);
     witness0.push(&challenge_control_block.serialize());
 

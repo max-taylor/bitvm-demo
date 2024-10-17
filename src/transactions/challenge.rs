@@ -162,11 +162,6 @@ mod tests {
 
         let mut challenge_hash_manager = ChallengeHashesManager::new();
 
-        let fund_tx_prevouts = vec![TxOut {
-            script_pubkey: prover.address.script_pubkey(),
-            value: INITIAL_FUND_AMOUNT,
-        }];
-
         let secp = Secp256k1::new();
         let circuit = BristolCircuit::from_bristol("circuits/add.txt");
 
@@ -193,19 +188,20 @@ mod tests {
         let sighash = sighash_cache
             .taproot_key_spend_signature_hash(
                 0,
-                &bitcoin::sighash::Prevouts::All(&fund_tx_prevouts),
+                &bitcoin::sighash::Prevouts::All(&vec![TxOut {
+                    script_pubkey: prover.address.script_pubkey(),
+                    value: INITIAL_FUND_AMOUNT,
+                }]),
                 bitcoin::sighash::TapSighashType::Default,
             )
             .unwrap();
+
         let sig = prover.sign_with_tweak(sighash, None);
         let witness = sighash_cache.witness_mut(0).unwrap();
         witness.push(sig.as_ref());
 
-        let txid = rpc
-            .send_raw_transaction(&challenge_tx)
+        rpc.send_raw_transaction(&challenge_tx)
             .unwrap_or_else(|e| panic!("Failed to send challenge tx: {}", e));
-
-        dbg!(txid);
 
         (
             secp,
@@ -221,7 +217,7 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_challenge_hash_script() {
+    fn test_verifier_can_challenge_the_first_gate() {
         let (
             secp,
             circuit,
@@ -235,8 +231,6 @@ mod tests {
         ) = test_setup();
 
         let challenge_gate_num = 0;
-
-        let challenge_hashes = challenge_hash_manager.get_challenge_hashes(0);
 
         let (response_address, _) = generate_response_address_and_info(
             &secp,
@@ -273,8 +267,9 @@ mod tests {
             &challenge_tx,
             &verifier,
             prover.pk,
-            &challenge_hashes[challenge_gate_num as usize],
-            &challenge_hash_manager.get_challenge_preimage(0, 0),
+            &challenge_hash_manager,
+            0,
+            challenge_gate_num,
             &challenge_taproot_info,
             &equivocation_taproot_info,
             &prover_musig,
@@ -286,6 +281,7 @@ mod tests {
             .unwrap_or_else(|e| panic!("Failed to send raw transaction: {}", e));
 
         let tx = rpc.get_raw_transaction(&response_txid, None).unwrap();
-        dbg!(tx);
+
+        assert_eq!(tx.output.len(), 2);
     }
 }
