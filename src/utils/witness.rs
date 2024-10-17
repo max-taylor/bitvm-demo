@@ -5,18 +5,14 @@ use bitcoin::{sighash::SighashCache, taproot::LeafVersion, TapLeafHash};
 use bitcoin::{Transaction, XOnlyPublicKey};
 
 use crate::transactions::generate_2_of_2_script;
-use crate::{
-    actor::Actor,
-    circuit::wire::{HashValue, PreimageValue},
-    transactions::generate_challenge_script,
-};
+use crate::{actor::Actor, transactions::generate_challenge_script};
 
 use super::challenge_hashes::ChallengeHashesManager;
 
 /**
 * This function is called by the verifier to fill the response transaction with the witness data
 **/
-pub fn fill_response_tx_with_witness_data(
+pub fn fill_response_tx_with_witness_for_gate_challenge(
     response_tx: &mut Transaction,
     challenge_tx: &Transaction,
     verifier: &Actor,
@@ -52,12 +48,7 @@ pub fn fill_response_tx_with_witness_data(
         .control_block(&(challenge_script.clone(), LeafVersion::TapScript))
         .expect("Cannot create control block");
 
-    let musig_2of2_script = generate_2_of_2_script(prover_pk, verifier.pk);
-
-    let musig_control_block = equivocation_taproot_info
-        .control_block(&(musig_2of2_script.clone(), LeafVersion::TapScript))
-        .expect("Cannot create control block");
-
+    // Challenge witness data
     let witness0 = sighash_cache.witness_mut(0).unwrap();
     witness0.push(verifier_challenge_sig.as_ref());
     witness0.push(
@@ -66,6 +57,13 @@ pub fn fill_response_tx_with_witness_data(
     witness0.push(challenge_script);
     witness0.push(&challenge_control_block.serialize());
 
+    let musig_2of2_script = generate_2_of_2_script(prover_pk, verifier.pk);
+
+    let musig_control_block = equivocation_taproot_info
+        .control_block(&(musig_2of2_script.clone(), LeafVersion::TapScript))
+        .expect("Cannot create control block");
+
+    // Equivocation witness data
     let witness1 = sighash_cache.witness_mut(1).unwrap();
     witness1.push(verifier_musig.as_ref());
     witness1.push(prover_musig.as_ref());

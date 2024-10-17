@@ -16,8 +16,7 @@ pub fn build_challenge_tx(
         vec![TxIn {
             previous_output: OutPoint {
                 txid: prev_txid.clone(),
-                vout: 0, // TODO: THis may be incorrect, previously this was
-                         // "initial_fund_tx.details[0].vout,"
+                vout: 0,
             },
             script_sig: ScriptBuf::new(),
             sequence: bitcoin::transaction::Sequence::ENABLE_RBF_NO_LOCKTIME,
@@ -121,7 +120,7 @@ mod tests {
         },
         utils::{
             bitcoin_rpc::setup_client_and_fund_prover, challenge_hashes::ChallengeHashesManager,
-            witness::fill_response_tx_with_witness_data,
+            witness::fill_response_tx_with_witness_for_gate_challenge,
         },
     };
 
@@ -230,8 +229,6 @@ mod tests {
             equivocation_taproot_info,
         ) = test_setup();
 
-        let challenge_gate_num = 0;
-
         let (response_address, _) = generate_response_address_and_info(
             &secp,
             &circuit,
@@ -257,12 +254,14 @@ mod tests {
             0,
         );
 
+        let challenge_gate_num = 0;
+
         let prover_musig =
             prover.sign_tx_containing_musig(&response_tx, challenge_tx.output.clone());
         let verifier_musig =
             verifier.sign_tx_containing_musig(&response_tx, challenge_tx.output.clone());
 
-        fill_response_tx_with_witness_data(
+        fill_response_tx_with_witness_for_gate_challenge(
             &mut response_tx,
             &challenge_tx,
             &verifier,
@@ -283,5 +282,61 @@ mod tests {
         let tx = rpc.get_raw_transaction(&response_txid, None).unwrap();
 
         assert_eq!(tx.output.len(), 2);
+    }
+
+    #[test]
+    fn test_verifier_can_equivocate_with_wire_hashes() {
+        let (
+            secp,
+            circuit,
+            rpc,
+            prover,
+            verifier,
+            challenge_hash_manager,
+            challenge_tx,
+            challenge_taproot_info,
+            equivocation_taproot_info,
+        ) = test_setup();
+
+        let response_tx = Transaction {
+            version: bitcoin::transaction::Version::TWO,
+            lock_time: LockTime::from(Height::MIN),
+            input: vec![
+                TxIn {
+                    previous_output: OutPoint {
+                        txid: challenge_tx.txid(),
+                        vout: 0,
+                    },
+                    script_sig: ScriptBuf::new(),
+                    sequence: bitcoin::transaction::Sequence::ENABLE_RBF_NO_LOCKTIME,
+                    witness: Witness::new(),
+                },
+                TxIn {
+                    previous_output: OutPoint {
+                        txid: challenge_tx.txid(),
+                        vout: 1,
+                    },
+                    script_sig: ScriptBuf::new(),
+                    sequence: bitcoin::transaction::Sequence::ENABLE_RBF_NO_LOCKTIME,
+                    witness: Witness::new(),
+                },
+            ],
+            output: vec![
+                // Simple payout to verifier
+                TxOut {
+                    script_pubkey: verifier.address.script_pubkey(),
+                    // TODO: Wrong amount
+                    value: Amount::from_sat(DUST_LIMIT),
+                },
+            ],
+        };
+
+        // Test balance of verifier after equivocation increases
+    }
+
+    #[test]
+    fn test_verifier_can_equivocate_after_timeout() {
+
+        // Test balance of verifier after equivocation increases
     }
 }
