@@ -103,11 +103,7 @@ impl Actor {
         )
     }
 
-    pub fn sign_tx_containing_musig(
-        &mut self,
-        tx: &Transaction,
-        last_output: Vec<TxOut>,
-    ) -> Signature {
+    pub fn sign_tx_containing_musig(&self, tx: &Transaction, last_output: Vec<TxOut>) -> Signature {
         let prover_pk = self.multisg_cache.get_prover_pk();
         let verifier_pk = self.multisg_cache.get_verifier_pk();
         let sighash = get_sighash_for_musig_script(tx, &last_output, prover_pk, verifier_pk);
