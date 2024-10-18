@@ -138,6 +138,8 @@ pub fn build_equivocation_response_tx(
 
 #[cfg(test)]
 mod tests {
+    use std::{thread, time::Duration};
+
     use crate::{
         actor::{Actor, ActorType},
         circuit::BristolCircuit,
@@ -159,7 +161,7 @@ mod tests {
     };
 
     use super::*;
-    use bitcoin::hashes::Hash;
+    use bitcoin::hashes::{sha256, Hash};
     use bitcoin::{
         key::Secp256k1,
         secp256k1::All,
@@ -167,12 +169,48 @@ mod tests {
         taproot::{LeafVersion, TaprootSpendInfo},
         Amount, TapLeafHash, TxOut,
     };
-    use bitcoincore_rpc::{Client, RpcApi};
+    use bitcoincore_rpc::{jsonrpc::error::RpcError, Client, Error, RpcApi};
 
     const INITIAL_FUND_AMOUNT: Amount = Amount::from_sat(100_000);
     const CHALLENGE_AMOUNT: u64 = 100_000;
     const FEE: u64 = 500;
     const DUST_LIMIT: u64 = 546;
+
+    // Retry function for sending raw transactions
+    fn retry_send_transaction(
+        rpc: &Client,
+        tx: &Transaction,
+        retries: u32,
+        delay_secs: u64,
+    ) -> Result<bitcoin::Txid, Error> {
+        let mut attempts = 0;
+
+        loop {
+            match rpc.send_raw_transaction(tx) {
+                Ok(txid) => {
+                    // Transaction sent successfully, return the Txid
+                    return Ok(txid);
+                }
+                Err(e) => {
+                    attempts += 1;
+
+                    if attempts >= retries {
+                        // Max attempts reached, return the error
+                        return Err(e);
+                    }
+
+                    // Log a warning or retry message (optional)
+                    eprintln!(
+                    "Attempt {} failed to send transaction. Retrying in {} seconds... Error: {:?}",
+                    attempts, delay_secs, e
+                );
+
+                    // Wait for a short delay before retrying
+                    thread::sleep(Duration::from_secs(delay_secs));
+                }
+            }
+        }
+    }
 
     fn test_setup() -> (
         Secp256k1<All>,
@@ -185,8 +223,8 @@ mod tests {
         TaprootSpendInfo,
         TaprootSpendInfo,
     ) {
-        let mut prover = Actor::new(ActorType::Prover);
-        let mut verifier = Actor::new(ActorType::Verifier);
+        let mut prover = Actor::new(ActorType::Prover, Some(0));
+        let mut verifier = Actor::new(ActorType::Verifier, Some(1));
 
         prover.multisg_cache.set_other_actor_pk(verifier.pk);
         verifier.multisg_cache.set_other_actor_pk(prover.pk);
@@ -206,10 +244,15 @@ mod tests {
             generate_equivocation_address_and_info(&secp, &circuit, prover.pk, verifier.pk);
 
         let (challenge_hashes, _) =
-            challenge_hash_manager.generate_challenge_hashes(circuit.gates.len());
+            challenge_hash_manager.generate_challenge_hashes(circuit.gates.len(), Some(0));
 
         let (challenge_address, challenge_taproot_info) =
             generate_challenge_address_and_info(&secp, &circuit, verifier.pk, &challenge_hashes);
+
+        // let fund_txid =
+        //     sha256::Hash(0x849a32c5b2f5c3d109372deb87b367eed6f103e418241f06d30b7b4e191418c4);
+
+        dbg!(&fund_tx.transaction().unwrap().txid());
 
         let mut challenge_tx = build_challenge_tx(
             &fund_tx.transaction().unwrap().txid(),
@@ -235,10 +278,13 @@ mod tests {
 
         let sig = prover.sign_with_tweak(sighash, None);
         let witness = sighash_cache.witness_mut(0).unwrap();
-        witness.push(sig.as_ref());
+        witness.push(sig.as_ref().to_vec());
+
+        // retry_send_transaction(&rpc, &challenge_tx, 5, 5)
+        //     .unwrap_or_else(|e| panic!("Failed to send setup challenge tx: {}", e));
 
         rpc.send_raw_transaction(&challenge_tx)
-            .unwrap_or_else(|e| panic!("Failed to send challenge tx: {}", e));
+            .unwrap_or_else(|e| panic!("Failed to send setup challenge tx: {}", e));
 
         (
             secp,
@@ -396,6 +442,8 @@ mod tests {
         witness.push(equivocation_sig.as_ref());
         witness.push(equivocation_script);
         witness.push(&equivocation_control_block.serialize());
+
+        // TODO:
 
         // let txid =rpc
         //     .send_raw_transaction(&response_tx)

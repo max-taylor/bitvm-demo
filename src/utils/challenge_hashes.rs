@@ -1,6 +1,6 @@
 use bitcoin::{
     hashes::{sha256, Hash},
-    key::rand::{self, Rng},
+    key::rand::{rngs::StdRng, Rng, SeedableRng},
 };
 
 use crate::circuit::wire::{HashValue, PreimageValue};
@@ -21,15 +21,22 @@ impl ChallengeHashesManager {
     pub fn generate_challenge_hashes(
         &mut self,
         num_gates: usize,
+        seed: Option<u64>,
     ) -> (Vec<HashValue>, Vec<PreimageValue>) {
         let mut challenge_hashes: Vec<HashValue> = Vec::new();
-        let mut rng = rand::thread_rng();
+        let mut rng = match seed {
+            Some(seed) => StdRng::seed_from_u64(seed),
+            None => StdRng::from_entropy(),
+        };
+
         let mut preimages = Vec::new();
+
         for _ in 0..num_gates {
             let preimage: PreimageValue = rng.gen();
             preimages.push(preimage);
             challenge_hashes.push(sha256::Hash::hash(&preimage).to_byte_array());
         }
+
         self.challenge_preimages.push(preimages.clone());
         self.challenge_hashes.push(challenge_hashes.clone());
         (challenge_hashes, preimages)

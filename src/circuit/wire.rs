@@ -1,4 +1,7 @@
-use bitcoin::hashes::{sha256, Hash};
+use bitcoin::{
+    hashes::{sha256, Hash},
+    key::rand::{rngs::StdRng, SeedableRng},
+};
 use bitcoincore_rpc::bitcoin::key::rand::{self, Rng};
 use serde::{Deserialize, Serialize};
 
@@ -26,8 +29,11 @@ pub struct Wire {
 }
 
 impl Wire {
-    pub fn new(index: usize) -> Self {
-        let mut rng = rand::thread_rng();
+    pub fn new(index: usize, seed: Option<u64>) -> Self {
+        let mut rng = match seed {
+            Some(seed) => StdRng::seed_from_u64(seed),
+            None => StdRng::from_entropy(),
+        };
 
         let preimage1: PreimageValue = rng.gen();
         let preimage2: PreimageValue = rng.gen();

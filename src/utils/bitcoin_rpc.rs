@@ -29,7 +29,7 @@ pub fn setup_client_and_fund_prover(
     //         rpc.get_new_address(Some(WALLET_NAME), None).unwrap()
     //     });
 
-    rpc.generate_to_address(101, &wallet_address.assume_checked())
+    rpc.generate_to_address(2, &wallet_address.clone().assume_checked())
         .unwrap();
 
     let initial_fund_txid = rpc
@@ -39,6 +39,9 @@ pub fn setup_client_and_fund_prover(
     let initial_fund_tx = rpc
         .get_transaction(&initial_fund_txid, None)
         .unwrap_or_else(|e| panic!("Failed to get transaction: {}", e));
+
+    // rpc.generate_to_address(5, &wallet_address.assume_checked())
+    //     .unwrap();
 
     (rpc, initial_fund_tx)
 }

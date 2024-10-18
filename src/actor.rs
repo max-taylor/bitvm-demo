@@ -4,7 +4,7 @@ use bitcoin::{
     address::NetworkChecked,
     hashes::Hash,
     key::{
-        rand::RngCore,
+        rand::{rngs::StdRng, RngCore, SeedableRng},
         secp256k1::{Keypair, Secp256k1, SecretKey},
     },
     secp256k1::{schnorr::Signature, All, Message, XOnlyPublicKey},
@@ -30,12 +30,17 @@ pub struct Actor {
 }
 
 impl Actor {
-    pub fn new(actor_type: ActorType) -> Self {
+    pub fn new(actor_type: ActorType, seed: Option<u64>) -> Self {
         // Initialize the Secp256k1 context
         let secp: Secp256k1<All> = Secp256k1::new();
 
+        let mut rng = match seed {
+            Some(seed) => StdRng::seed_from_u64(seed),
+            None => StdRng::from_entropy(),
+        };
+
         // Generate a random 32-byte array
-        let mut rng = rand::thread_rng();
+        // let mut rng = rand::thread_rng();
         let mut random_bytes = [0u8; 32];
         rng.fill_bytes(&mut random_bytes);
 
@@ -82,6 +87,11 @@ impl Actor {
         sighash: TapSighash,
         merkle_root: Option<TapNodeHash>,
     ) -> Signature {
+        // Create a deterministic RNG using sighash as seed
+        // let mut seed = [0u8; 32];
+        // seed.copy_from_slice(sighash.as_byte_array());
+        let mut deterministic_rng = StdRng::seed_from_u64(10);
+
         self.secp.sign_schnorr_with_rng(
             &Message::from_digest_slice(sighash.as_byte_array()).expect("should be hash"),
             &self
@@ -91,7 +101,7 @@ impl Actor {
                     &TapTweakHash::from_key_and_tweak(self.pk, merkle_root).to_scalar(),
                 )
                 .unwrap(),
-            &mut rand::thread_rng(),
+            &mut deterministic_rng,
         )
     }
 

@@ -45,7 +45,7 @@ impl BristolCircuit {
 
                     // Construct the wires
                     for i in 0..num_wires {
-                        let wire = Wire::new(i);
+                        let wire = Wire::new(i, Some(0));
                         wire_indexes.insert(i, Arc::new(Mutex::new(wire)));
                     }
                 } else if i == 1 {

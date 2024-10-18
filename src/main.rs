@@ -24,8 +24,8 @@ mod utils;
 fn main() {
     let mut circuit = BristolCircuit::from_bristol("circuits/add.txt");
 
-    let mut prover = Actor::new(ActorType::Prover);
-    let mut verifier = Actor::new(ActorType::Verifier);
+    let mut prover = Actor::new(ActorType::Prover, None);
+    let mut verifier = Actor::new(ActorType::Verifier, None);
 
     prover.multisg_cache.set_other_actor_pk(verifier.pk);
     verifier.multisg_cache.set_other_actor_pk(prover.pk);
@@ -65,7 +65,7 @@ fn main() {
     for i in 0..bisection_length {
         // Verifier creates the challenge hashes
         let (challenge_hashes, challenge_preimages) =
-            challenge_hashes_manager.generate_challenge_hashes(circuit.gates.len());
+            challenge_hashes_manager.generate_challenge_hashes(circuit.gates.len(), None);
 
         // Using the challenge hashes the verifier creates their challenge transaction which has a
         // leaf script for every
