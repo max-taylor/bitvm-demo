@@ -167,7 +167,7 @@ mod tests {
         taproot::{LeafVersion, TaprootSpendInfo},
         Amount, TapLeafHash, TxOut,
     };
-    use bitcoincore_rpc::{json::GetTransactionResult, Client, RpcApi};
+    use bitcoincore_rpc::{Client, RpcApi};
 
     const INITIAL_FUND_AMOUNT: Amount = Amount::from_sat(100_000);
     const CHALLENGE_AMOUNT: u64 = 100_000;
@@ -336,12 +336,18 @@ mod tests {
             0,
         );
 
+        let wire = circuit.wires[0].clone();
+        let preimages = wire.clone().lock().unwrap().preimages.unwrap();
+
+        let hashes = wire.lock().unwrap().get_hash_pair();
+
         fill_response_tx_with_witness_for_equivocation(
             &mut response_tx,
             &challenge_tx,
             &verifier,
-            &circuit,
             &equivocation_taproot_info,
+            hashes,
+            preimages,
         );
 
         let response_txid = rpc
@@ -354,7 +360,46 @@ mod tests {
     }
 
     #[test]
-    fn test_verifier_can_equivocate_after_timeout() {
+    fn test_prover_can_claim_after_blocks() {
+        let (_, circuit, rpc, prover, verifier, _, challenge_tx, _, equivocation_taproot_info) =
+            test_setup();
+
+        let mut response_tx = build_equivocation_response_tx(
+            &challenge_tx,
+            &verifier.address,
+            CHALLENGE_AMOUNT,
+            FEE,
+            DUST_LIMIT,
+            0,
+        );
+
+        let equivocation_script = generate_timelock_script(prover.pk, 10);
+        let equivocation_control_block = equivocation_taproot_info
+            .control_block(&(equivocation_script.clone(), LeafVersion::TapScript))
+            .expect("Cannot create equivocation control block");
+
+        let mut sighash_cache = SighashCache::new(&mut response_tx);
+
+        let sig_hash = sighash_cache
+            .taproot_script_spend_signature_hash(
+                0,
+                &bitcoin::sighash::Prevouts::All(&[challenge_tx.output[1].clone()]),
+                TapLeafHash::from_script(&equivocation_script, LeafVersion::TapScript),
+                bitcoin::sighash::TapSighashType::Default,
+            )
+            .unwrap();
+
+        let equivocation_sig = prover.sign_tx(&sig_hash.to_byte_array());
+
+        // Equivocation witness data
+        let witness = sighash_cache.witness_mut(0).unwrap();
+        witness.push(equivocation_sig.as_ref());
+        witness.push(equivocation_script);
+        witness.push(&equivocation_control_block.serialize());
+
+        // let txid =rpc
+        //     .send_raw_transaction(&response_tx)
+        //     .unwrap_or_else(|e| panic!("Failed to send raw transaction: {}", e));
 
         // Test balance of verifier after equivocation increases
     }

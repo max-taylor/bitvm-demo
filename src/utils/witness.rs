@@ -4,6 +4,7 @@ use bitcoin::taproot::TaprootSpendInfo;
 use bitcoin::{sighash::SighashCache, taproot::LeafVersion, TapLeafHash};
 use bitcoin::{Transaction, XOnlyPublicKey};
 
+use crate::circuit::wire::{HashTuple, PreimageTuple};
 use crate::circuit::BristolCircuit;
 use crate::transactions::{generate_2_of_2_script, generate_anti_contradiction_script};
 use crate::{actor::Actor, transactions::generate_challenge_script};
@@ -76,14 +77,10 @@ pub fn fill_response_tx_with_witness_for_equivocation(
     response_tx: &mut Transaction,
     challenge_tx: &Transaction,
     verifier: &Actor,
-    circuit: &BristolCircuit,
     equivocation_taproot_info: &TaprootSpendInfo,
+    hashes: HashTuple,
+    preimages: PreimageTuple,
 ) {
-    let wire = circuit.wires[0].clone();
-    let preimages = wire.clone().lock().unwrap().preimages.unwrap();
-
-    let hashes = wire.lock().unwrap().get_hash_pair();
-
     let equivocation_script = generate_anti_contradiction_script(hashes, verifier.pk);
     let equivocation_control_block = equivocation_taproot_info
         .control_block(&(equivocation_script.clone(), LeafVersion::TapScript))
