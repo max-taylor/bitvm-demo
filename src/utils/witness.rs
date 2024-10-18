@@ -46,7 +46,7 @@ pub fn fill_response_tx_with_witness_for_gate_challenge(
     // FIX: This is failing with "cannot create control block"
     let challenge_control_block = challenge_taproot_info
         .control_block(&(challenge_script.clone(), LeafVersion::TapScript))
-        .expect("Cannot create control block");
+        .expect("Cannot create challenge control block");
 
     // Challenge witness data
     let witness0 = sighash_cache.witness_mut(0).unwrap();
@@ -61,7 +61,7 @@ pub fn fill_response_tx_with_witness_for_gate_challenge(
 
     let musig_control_block = equivocation_taproot_info
         .control_block(&(musig_2of2_script.clone(), LeafVersion::TapScript))
-        .expect("Cannot create control block");
+        .expect("Cannot create equivocation control block");
 
     // Equivocation witness data
     let witness1 = sighash_cache.witness_mut(1).unwrap();
