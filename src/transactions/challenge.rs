@@ -107,6 +107,35 @@ pub fn build_response_tx(
     }
 }
 
+pub fn build_equivocation_response_tx(
+    previous_challenge_tx: &Transaction,
+    verifier_address: &Address,
+    amt: u64,
+    fee: u64,
+    dust_limit: u64,
+    i: u64,
+) -> Transaction {
+    Transaction {
+        version: bitcoin::transaction::Version::TWO,
+        lock_time: LockTime::from(Height::MIN),
+        input: vec![TxIn {
+            previous_output: OutPoint {
+                txid: previous_challenge_tx.txid(),
+                vout: 1,
+            },
+            script_sig: ScriptBuf::new(),
+            sequence: bitcoin::transaction::Sequence::ENABLE_RBF_NO_LOCKTIME,
+            witness: Witness::new(),
+        }],
+        output: vec![TxOut {
+            script_pubkey: verifier_address.script_pubkey(),
+            // This is not ideal, but its the same logic that constructs the value so
+            // keeping it as is
+            value: Amount::from_sat(amt - (2 * i + 2) * (fee + dust_limit)),
+        }],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
@@ -120,8 +149,12 @@ mod tests {
             generate_timelock_script, taproot_address_from_script_leaves,
         },
         utils::{
-            bitcoin_rpc::setup_client_and_fund_prover, challenge_hashes::ChallengeHashesManager,
-            witness::fill_response_tx_with_witness_for_gate_challenge,
+            bitcoin_rpc::setup_client_and_fund_prover,
+            challenge_hashes::ChallengeHashesManager,
+            witness::{
+                fill_response_tx_with_witness_for_equivocation,
+                fill_response_tx_with_witness_for_gate_challenge,
+            },
         },
     };
 
@@ -294,56 +327,22 @@ mod tests {
         let (_, circuit, rpc, _, verifier, _, challenge_tx, _, equivocation_taproot_info) =
             test_setup();
 
-        let mut response_tx = Transaction {
-            version: bitcoin::transaction::Version::TWO,
-            lock_time: LockTime::from(Height::MIN),
-            input: vec![TxIn {
-                previous_output: OutPoint {
-                    txid: challenge_tx.txid(),
-                    vout: 1,
-                },
-                script_sig: ScriptBuf::new(),
-                sequence: bitcoin::transaction::Sequence::ENABLE_RBF_NO_LOCKTIME,
-                witness: Witness::new(),
-            }],
-            output: vec![TxOut {
-                script_pubkey: verifier.address.script_pubkey(),
-                // This is not ideal, but its the same logic that constructs the value so
-                // keeping it as is
-                value: Amount::from_sat(CHALLENGE_AMOUNT - (2 * 0 + 2) * (FEE + DUST_LIMIT)),
-            }],
-        };
+        let mut response_tx = build_equivocation_response_tx(
+            &challenge_tx,
+            &verifier.address,
+            CHALLENGE_AMOUNT,
+            FEE,
+            DUST_LIMIT,
+            0,
+        );
 
-        let wire = circuit.wires[0].clone();
-        let preimages = wire.clone().lock().unwrap().preimages.unwrap();
-
-        let hashes = wire.lock().unwrap().get_hash_pair();
-
-        let equivocation_script = generate_anti_contradiction_script(hashes, verifier.pk);
-        let equivocation_control_block = equivocation_taproot_info
-            .control_block(&(equivocation_script.clone(), LeafVersion::TapScript))
-            .expect("Cannot create equivocation control block");
-
-        let mut sighash_cache = SighashCache::new(&mut response_tx);
-
-        let sig_hash = sighash_cache
-            .taproot_script_spend_signature_hash(
-                0,
-                &bitcoin::sighash::Prevouts::All(&[challenge_tx.output[1].clone()]),
-                TapLeafHash::from_script(&equivocation_script, LeafVersion::TapScript),
-                bitcoin::sighash::TapSighashType::Default,
-            )
-            .unwrap();
-
-        let equivocation_sig = verifier.sign_tx(&sig_hash.to_byte_array());
-
-        // Equivocation witness data
-        let witness = sighash_cache.witness_mut(0).unwrap();
-        witness.push(equivocation_sig.as_ref());
-        witness.push(preimages.one.unwrap());
-        witness.push(preimages.zero.unwrap());
-        witness.push(equivocation_script);
-        witness.push(&equivocation_control_block.serialize());
+        fill_response_tx_with_witness_for_equivocation(
+            &mut response_tx,
+            &challenge_tx,
+            &verifier,
+            &circuit,
+            &equivocation_taproot_info,
+        );
 
         let response_txid = rpc
             .send_raw_transaction(&response_tx)
