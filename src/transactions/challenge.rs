@@ -19,7 +19,7 @@ pub fn build_challenge_tx(
                 vout: 0,
             },
             script_sig: ScriptBuf::new(),
-            sequence: bitcoin::transaction::Sequence::ENABLE_RBF_NO_LOCKTIME,
+            sequence: bitcoin::transaction::Sequence::MAX,
             witness: Witness::new(),
         }]
     } else {
@@ -30,7 +30,7 @@ pub fn build_challenge_tx(
                     vout: 0,
                 },
                 script_sig: ScriptBuf::new(),
-                sequence: bitcoin::transaction::Sequence::ENABLE_RBF_NO_LOCKTIME,
+                sequence: bitcoin::transaction::Sequence::MAX,
                 witness: Witness::new(),
             },
             TxIn {
@@ -39,7 +39,7 @@ pub fn build_challenge_tx(
                     vout: 1,
                 },
                 script_sig: ScriptBuf::new(),
-                sequence: bitcoin::transaction::Sequence::ENABLE_RBF_NO_LOCKTIME,
+                sequence: bitcoin::transaction::Sequence::MAX,
                 witness: Witness::new(),
             },
         ]
@@ -138,7 +138,7 @@ pub fn build_equivocation_response_tx(
 
 #[cfg(test)]
 mod tests {
-    use std::{thread, time::Duration};
+    use std::{str::FromStr, thread, time::Duration};
 
     use crate::{
         actor::{Actor, ActorType},
@@ -161,7 +161,10 @@ mod tests {
     };
 
     use super::*;
-    use bitcoin::hashes::{sha256, Hash};
+    use bitcoin::{
+        hashes::{sha256, Hash},
+        hex,
+    };
     use bitcoin::{
         key::Secp256k1,
         secp256k1::All,
@@ -212,6 +215,25 @@ mod tests {
         }
     }
 
+    fn dumb_issue(txid: &Txid, rpc: &Client) {
+        let unspent_outputs = rpc.list_unspent(None, None, None, None, None).unwrap();
+
+        dbg!("Finished scan");
+        let found_output = unspent_outputs.iter().find(|utxo| utxo.txid == *txid);
+
+        dbg!(found_output);
+        for utxo in unspent_outputs {
+            if utxo.txid
+                == Txid::from_str(
+                    &"55399b9e3631f20ef8e6a99f4b8087b702be68af075ede9d78fc49df17773ae9",
+                )
+                .unwrap()
+            {
+                println!("{:?}", utxo);
+            }
+        }
+    }
+
     fn test_setup() -> (
         Secp256k1<All>,
         BristolCircuit,
@@ -249,13 +271,21 @@ mod tests {
         let (challenge_address, challenge_taproot_info) =
             generate_challenge_address_and_info(&secp, &circuit, verifier.pk, &challenge_hashes);
 
-        // let fund_txid =
-        //     sha256::Hash(0x849a32c5b2f5c3d109372deb87b367eed6f103e418241f06d30b7b4e191418c4);
+        let fund_txid = fund_tx.transaction().unwrap().txid();
 
-        dbg!(&fund_tx.transaction().unwrap().txid());
+        let fund_txid =
+            Txid::from_str(&"f38c5943e4588d4b980d21a7a1460f1028a2d44229f773979d816396fb320e87")
+                .unwrap();
+
+        let unspent_outputs = rpc.list_unspent(None, None, None, None, None).unwrap();
+
+        dumb_issue(&fund_txid, &rpc);
+
+        println!("Fund Txid: {}", fund_txid);
 
         let mut challenge_tx = build_challenge_tx(
-            &fund_tx.transaction().unwrap().txid(),
+            // &fund_tx.transaction().unwrap().txid(),
+            &fund_txid,
             &challenge_address,
             &equivocation_address,
             CHALLENGE_AMOUNT,
@@ -283,6 +313,7 @@ mod tests {
         // retry_send_transaction(&rpc, &challenge_tx, 5, 5)
         //     .unwrap_or_else(|e| panic!("Failed to send setup challenge tx: {}", e));
 
+        // let tx = rpc.get_raw_transaction(&fund_txid, None).unwrap();
         rpc.send_raw_transaction(&challenge_tx)
             .unwrap_or_else(|e| panic!("Failed to send setup challenge tx: {}", e));
 

@@ -1,3 +1,5 @@
+use std::{thread, time::Duration};
+
 use bitcoin::{Address, Amount};
 use bitcoincore_rpc::{json::GetTransactionResult, Auth, Client, RpcApi};
 
@@ -35,6 +37,8 @@ pub fn setup_client_and_fund_prover(
     let initial_fund_txid = rpc
         .send_to_address(to_address, amount, None, None, None, None, None, None)
         .unwrap_or_else(|e| panic!("Failed to send to address: {}", e));
+
+    // thread::sleep(Duration::from_secs(5));
 
     let initial_fund_tx = rpc
         .get_transaction(&initial_fund_txid, None)
