@@ -11,12 +11,13 @@ pub fn build_challenge_tx(
     fee: u64,
     dust_limit: u64,
     i: u64,
+    vout: u32,
 ) -> Transaction {
     let inputs = if i == 0 {
         vec![TxIn {
             previous_output: OutPoint {
                 txid: prev_txid.clone(),
-                vout: 0,
+                vout,
             },
             script_sig: ScriptBuf::new(),
             sequence: bitcoin::transaction::Sequence::MAX,
@@ -164,6 +165,7 @@ mod tests {
     use bitcoin::{
         hashes::{sha256, Hash},
         hex,
+        secp256k1::PublicKey,
     };
     use bitcoin::{
         key::Secp256k1,
@@ -215,23 +217,70 @@ mod tests {
         }
     }
 
-    fn dumb_issue(txid: &Txid, rpc: &Client) {
-        let unspent_outputs = rpc.list_unspent(None, None, None, None, None).unwrap();
+    fn dumb_issue(txid: &Txid, rpc: &Client, prover: &Actor, vout: u32) {
+        let unspent_outputs = rpc.list_unspent(None, Some(0), None, None, None).unwrap();
 
-        dbg!("Finished scan");
-        let found_output = unspent_outputs.iter().find(|utxo| utxo.txid == *txid);
+        let found_output = unspent_outputs
+            .iter()
+            .find(|utxo| utxo.txid == *txid)
+            .unwrap();
 
-        dbg!(found_output);
-        for utxo in unspent_outputs {
-            if utxo.txid
-                == Txid::from_str(
-                    &"55399b9e3631f20ef8e6a99f4b8087b702be68af075ede9d78fc49df17773ae9",
-                )
-                .unwrap()
-            {
-                println!("{:?}", utxo);
-            }
-        }
+        dbg!(&found_output);
+
+        let pubkey = bitcoin::PublicKey::from(prover.keypair.public_key());
+
+        let address = Address::p2pkh(&pubkey, bitcoin::Network::Regtest);
+
+        let mut transaction = Transaction {
+            version: bitcoin::transaction::Version::TWO,
+            lock_time: LockTime::from(Height::MIN),
+            input: vec![TxIn {
+                previous_output: OutPoint {
+                    txid: txid.clone(),
+                    vout,
+                },
+                script_sig: ScriptBuf::new(),
+                sequence: bitcoin::transaction::Sequence::MAX,
+                witness: Witness::new(),
+            }],
+            output: vec![TxOut {
+                script_pubkey: prover.address.script_pubkey(),
+                value: Amount::from_sat(CHALLENGE_AMOUNT - (2) * (FEE + DUST_LIMIT)),
+            }],
+        };
+        let mut sighash_cache = SighashCache::new(&mut transaction);
+        let sighash = sighash_cache
+            .taproot_key_spend_signature_hash(
+                0,
+                &bitcoin::sighash::Prevouts::All(&vec![TxOut {
+                    script_pubkey: prover.address.script_pubkey(),
+                    value: INITIAL_FUND_AMOUNT,
+                }]),
+                bitcoin::sighash::TapSighashType::Default,
+            )
+            .unwrap();
+
+        let sig = prover.sign_with_tweak(sighash, None);
+        let witness = sighash_cache.witness_mut(0).unwrap();
+        witness.push(sig.as_ref().to_vec());
+
+        // let raw_tx = rpc.send_raw_transaction(&transaction);
+        //
+        // match raw_tx {
+        //     Ok(txid) => {
+        //         println!("-----SENT DUMB TX-----");
+        //     }
+        //     Err(e) => {
+        //         println!("-----DUMB TX FAILED----- {}", e);
+        //     }
+        // }
+
+        // while rpc.get_raw_transaction(&transaction.txid(), None).is_err() {
+        //     // Wait until the UTXO is fully confirmed
+        //     std::thread::sleep(std::time::Duration::from_secs(1));
+        // }
+        //
+        // println!("-----SENT DUMB TX-----");
     }
 
     fn test_setup() -> (
@@ -248,10 +297,11 @@ mod tests {
         let mut prover = Actor::new(ActorType::Prover, Some(0));
         let mut verifier = Actor::new(ActorType::Verifier, Some(1));
 
+        let pk = prover.pk;
         prover.multisg_cache.set_other_actor_pk(verifier.pk);
         verifier.multisg_cache.set_other_actor_pk(prover.pk);
 
-        let (rpc, fund_tx) = setup_client_and_fund_prover(
+        let (rpc, fund_tx, vout) = setup_client_and_fund_prover(
             WALLET_NAME,
             &prover.get_bitcoincore_rpc_address(),
             INITIAL_FUND_AMOUNT,
@@ -273,18 +323,23 @@ mod tests {
 
         let fund_txid = fund_tx.transaction().unwrap().txid();
 
-        let fund_txid =
-            Txid::from_str(&"f38c5943e4588d4b980d21a7a1460f1028a2d44229f773979d816396fb320e87")
-                .unwrap();
+        // while rpc.get_transaction(&fund_txid, None).is_err() {
+        //     // Wait until the UTXO is fully confirmed
+        //     std::thread::sleep(std::time::Duration::from_secs(1));
+        // }
 
-        let unspent_outputs = rpc.list_unspent(None, None, None, None, None).unwrap();
+        // let fund_txid =
+        //     Txid::from_str(&"9e42cebe1901875fb44f3529e29159c5e8baa70ba8551eff29701c1fc6dbff76")
+        //         .unwrap();
+        // dbg!(&fund_txid);
+        //
+        // dumb_issue(&fund_txid, &rpc, &prover, vout);
 
-        dumb_issue(&fund_txid, &rpc);
-
-        println!("Fund Txid: {}", fund_txid);
+        // let transaction = rpc.get_transaction(&fund_txid, None).unwrap();
+        //
+        // dbg!(&transaction);
 
         let mut challenge_tx = build_challenge_tx(
-            // &fund_tx.transaction().unwrap().txid(),
             &fund_txid,
             &challenge_address,
             &equivocation_address,
@@ -292,6 +347,7 @@ mod tests {
             FEE,
             DUST_LIMIT,
             0,
+            vout,
         );
 
         let mut sighash_cache = SighashCache::new(&mut challenge_tx);
@@ -476,7 +532,7 @@ mod tests {
 
         // TODO:
 
-        // let txid =rpc
+        // let txid = rpc
         //     .send_raw_transaction(&response_tx)
         //     .unwrap_or_else(|e| panic!("Failed to send raw transaction: {}", e));
 

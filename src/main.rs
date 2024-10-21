@@ -32,7 +32,7 @@ fn main() {
 
     let mut challenge_hashes_manager = ChallengeHashesManager::new();
 
-    let (rpc, initial_fund_tx) = setup_client_and_fund_prover(
+    let (rpc, initial_fund_tx, vout) = setup_client_and_fund_prover(
         WALLET_NAME,
         &prover.get_bitcoincore_rpc_address(),
         Amount::from_sat(100_000),
@@ -85,6 +85,7 @@ fn main() {
             fee,
             dust_limit,
             i,
+            vout,
         );
 
         let response_tx = build_response_tx(

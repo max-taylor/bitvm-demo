@@ -1,5 +1,3 @@
-use std::{thread, time::Duration};
-
 use bitcoin::{Address, Amount};
 use bitcoincore_rpc::{json::GetTransactionResult, Auth, Client, RpcApi};
 
@@ -7,7 +5,7 @@ pub fn setup_client_and_fund_prover(
     wallet_name: &str,
     to_address: &Address,
     amount: Amount,
-) -> (Client, GetTransactionResult) {
+) -> (Client, GetTransactionResult, u32) {
     let rpc = Client::new(
         "http://localhost:18443",
         Auth::UserPass("admin".to_string(), "admin".to_string()),
@@ -37,6 +35,7 @@ pub fn setup_client_and_fund_prover(
     let initial_fund_txid = rpc
         .send_to_address(to_address, amount, None, None, None, None, None, None)
         .unwrap_or_else(|e| panic!("Failed to send to address: {}", e));
+    // Find the correct output (vout) that matches the 'to_address'
 
     // thread::sleep(Duration::from_secs(5));
 
@@ -44,8 +43,20 @@ pub fn setup_client_and_fund_prover(
         .get_transaction(&initial_fund_txid, None)
         .unwrap_or_else(|e| panic!("Failed to get transaction: {}", e));
 
+    let found_vout: u32 = initial_fund_tx
+        .transaction()
+        .unwrap()
+        .output
+        .iter()
+        .enumerate() // Get the index (vout) along with the TxOut
+        .find(|(_, txout)| txout.script_pubkey == to_address.script_pubkey())
+        .map(|(vout, _)| vout)
+        .expect("Failed to find the correct vout for the to_address")
+        .try_into()
+        .unwrap();
+
     // rpc.generate_to_address(5, &wallet_address.assume_checked())
     //     .unwrap();
 
-    (rpc, initial_fund_tx)
+    (rpc, initial_fund_tx, found_vout)
 }
