@@ -45,7 +45,6 @@ pub fn fill_response_tx_with_witness_for_gate_challenge(
 
     let verifier_challenge_sig = verifier.sign_tx(&sig_hash.to_byte_array());
 
-    // FIX: This is failing with "cannot create control block"
     let challenge_control_block = challenge_taproot_info
         .control_block(&(challenge_script.clone(), LeafVersion::TapScript))
         .expect("Cannot create challenge control block");

@@ -43,6 +43,8 @@ pub fn setup_client_and_fund_prover(
         .get_transaction(&initial_fund_txid, None)
         .unwrap_or_else(|e| panic!("Failed to get transaction: {}", e));
 
+    // Stupidly the send_to_address method may create multiple tx_outs, this pulls out the tx_out
+    // that is needed
     let found_vout: u32 = initial_fund_tx
         .transaction()
         .unwrap()
@@ -54,9 +56,6 @@ pub fn setup_client_and_fund_prover(
         .expect("Failed to find the correct vout for the to_address")
         .try_into()
         .unwrap();
-
-    // rpc.generate_to_address(5, &wallet_address.assume_checked())
-    //     .unwrap();
 
     (rpc, initial_fund_tx, found_vout)
 }
